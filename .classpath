@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry kind="lib" path="E:/Local Drive/Academics/MailManagementSystem/lib/javamail/dsn.jar"/>
+	<classpathentry kind="lib" path="E:/Local Drive/Academics/MailManagementSystem/lib/javamail/gimap.jar"/>
+	<classpathentry kind="lib" path="E:/Local Drive/Academics/MailManagementSystem/lib/javamail/imap.jar"/>
+	<classpathentry kind="lib" path="E:/Local Drive/Academics/MailManagementSystem/lib/javamail/mailapi.jar"/>
+	<classpathentry kind="lib" path="E:/Local Drive/Academics/MailManagementSystem/lib/javamail/pop3.jar"/>
+	<classpathentry kind="lib" path="E:/Local Drive/Academics/MailManagementSystem/lib/javamail/smtp.jar"/>
+	<classpathentry kind="lib" path="E:/Local Drive/Academics/MailManagementSystem/lib/jxbrowser/jxbrowser-6.7.1.jar"/>
+	<classpathentry kind="lib" path="E:/Local Drive/Academics/MailManagementSystem/lib/jxbrowser/jxbrowser-linux32-6.7.1.jar"/>
+	<classpathentry kind="lib" path="E:/Local Drive/Academics/MailManagementSystem/lib/jxbrowser/jxbrowser-linux64-6.7.1.jar"/>
+	<classpathentry kind="lib" path="E:/Local Drive/Academics/MailManagementSystem/lib/jxbrowser/jxbrowser-mac-6.7.1.jar"/>
+	<classpathentry kind="lib" path="E:/Local Drive/Academics/MailManagementSystem/lib/jxbrowser/jxbrowser-win-6.7.1.jar"/>
+	<classpathentry kind="lib" path="E:/Local Drive/Academics/MailManagementSystem/lib/jxbrowser/license.jar"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>

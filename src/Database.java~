@@ -1,0 +1,587 @@
+import java.io.BufferedInputStream;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.Scanner;
+
+import javax.mail.Message;
+import javax.mail.MessagingException;
+
+import com.sun.mail.imap.IMAPFolder;
+
+
+public class Database {
+	
+	Scanner inputPage;
+	protected static Long lastUID;
+	protected static Long lastFromUID;
+	protected static Long lastToUID;
+	protected static Long lastSubjectUID;
+	protected static Long latestUID;
+	protected static Long lastFromNameUID;
+	protected static Long lastToNameUID;
+	
+	protected static boolean isUpdated;
+	
+	public Database(){
+		
+		try {
+			inputPage = new Scanner(new File(Include.CURDIR+"/mailDB/lastUID.txt"));
+			this.lastUID = inputPage.hasNext()?inputPage.nextLong():0;
+			inputPage.close();
+			inputPage = new Scanner(new File(Include.CURDIR+"/mailDB/lastSearchUID.txt"));
+			this.lastFromUID = this.lastToUID = this.lastFromNameUID = this.lastToNameUID =  this.lastSubjectUID = inputPage.hasNext()?inputPage.nextLong():0;
+			inputPage.close();
+			
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+	}
+
+
+	public void updateDB(){
+		try {
+			latestUID = ReadMail.inbox.getUID(ReadMail.inbox.getMessage(ReadMail.inbox.getMessageCount()));
+			if(!lastUID.equals(latestUID)){
+				this.isUpdated = true;
+			}
+			while(latestUID!=lastUID){
+				if(latestUID-100*(lastUID/100) < 100){
+					if((lastUID)/100 == ((lastUID-1)/100)){
+						updatePage(ReadMail.inbox, (lastUID)/100, latestUID-100*((lastUID-1)/100), true);
+					}
+					else{
+						updatePage(ReadMail.inbox, (lastUID)/100, latestUID-100*((lastUID-1)/100), true);
+					}
+					
+					lastUID = latestUID;
+				}
+				else{
+					updatePage(ReadMail.inbox, (lastUID)/100, 100*(((lastUID)/100)+1)-lastUID, true);
+					lastUID+=100*((lastUID/100)+1)-lastUID;
+				}
+			}
+		} catch (MessagingException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		//updateLastUIDToFile();
+	}
+	
+	private void updatePage(IMAPFolder inbox, long pageNumber, long numToFill, boolean append){
+		
+		//System.out.println("Page: "+pageNumber+" lastUID: "+lastUID+" numToFill: "+numToFill+" append: "+append);
+		String headers = "";
+		Message[] mails = null;
+		try {
+			mails = inbox.getMessagesByUID((long) (lastUID+1),(long) (lastUID+numToFill));
+		} catch (MessagingException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		for(int i = 0; i< mails.length;i++){
+			headers+= ReadMail.getHeaders(mails[i]);
+		}
+		BufferedWriter bufferedWriter = null;
+		try {
+			bufferedWriter = new BufferedWriter(new FileWriter(Include.CURDIR+"/mailDB/page"+pageNumber+".mail", append));
+			bufferedWriter.write(headers);
+			bufferedWriter.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+	}
+	
+	public void connectToPage(Long pageNumber){
+		BufferedInputStream inputStream = null;
+		try {
+			inputStream = new BufferedInputStream(new FileInputStream(Include.CURDIR+"/mailDB/page"+pageNumber+".mail"));
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		inputPage = new Scanner(inputStream);
+	}
+	
+	/**
+	 * returns all info with the given UID
+	 * [validString, fromAddress, toAddress, Subject, DateString]
+	 * @param UID
+	 * @return
+	 */
+	
+	public String[] getDetails(Long UID){
+		connectToPage(UID/100);
+		boolean valid = false;
+		while(inputPage.hasNext()){
+			if(inputPage.nextLong() == UID){
+				valid = true;
+				break;
+			}
+			for(int i=0;i<6;i++){
+				inputPage.nextLine();
+			}
+		}
+		if(valid){
+			inputPage.nextLine();
+			String str[] = new String[5];
+			for(int i=0;i<5;i++){
+				str[i] = inputPage.nextLine();
+			}
+			closeConnection();
+			return str;
+		}
+		closeConnection();
+		return null;
+	}
+	
+	/**
+	 * Returns all info from a page from a given baseUID
+	 * <UIDString, validString, fromAddress, toAddress, subject, date
+	 * @param baseUID
+	 * @return
+	 */
+	public ArrayList<String> getAllFromPage(Long pageNumber, Long baseUID){
+		connectToPage(pageNumber);
+		boolean valid = false;
+		long base = 0;
+		while(inputPage.hasNext()){
+			if((base = inputPage.nextLong())>= baseUID){
+				valid = true;
+				break;
+			}
+			else{
+				for(int i=0;i<6;i++){
+					inputPage.nextLine();
+				}
+			}
+		}
+		
+		if(valid){
+			ArrayList<String> str = new ArrayList<String>();
+			inputPage.nextLine();
+			str.add(Long.toString(base));
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			inputPage.nextLine();
+			while(inputPage.hasNext()){
+				for(int i=0;i<6;i++){
+					str.add(inputPage.nextLine());
+				}
+				inputPage.nextLine();
+			}
+			closeConnection();
+			return str;
+		}
+		closeConnection();
+		return null;
+		
+	}
+	
+	
+	/**
+	 * Methods used for Building Searching Trees
+	 */
+	
+	/**
+	 * returns all that is required to Build From Mail from given lastUID (exclusive)
+	 * [UID, VALID, FROM, SUBJECT, DATE]
+	 * all the strings obtained are unprocessed
+	 * @param lastUID
+	 * @return
+	 */
+	
+	
+	public ArrayList<String> getAllLaterMailForFrom(Long lastUID, Long latestUID){
+		if(lastUID == latestUID){
+			return null;
+		}
+		long finalPageNumber = latestUID/100;
+		long pageNumber = lastUID/100;
+		ArrayList<String> str = new ArrayList<String>();
+		while(pageNumber<=finalPageNumber){
+			getAllMailFromPageForFrom(pageNumber, lastUID, str);
+			pageNumber++;
+			lastUID = pageNumber*100;
+		}
+		return str;
+	}
+	
+	private ArrayList<String> getAllMailFromPageForFrom(Long pageNumber, Long baseUID, ArrayList<String> str){
+		connectToPage(pageNumber);
+		boolean valid = false;
+		long base = 0;
+		while(inputPage.hasNext()){
+			if((base = inputPage.nextLong())>= baseUID){
+				valid = true;
+				break;
+			}
+			else{
+				for(int i=0;i<6;i++){
+					inputPage.nextLine();
+				}
+			}
+		}
+		
+		if(valid){
+			str.add(Long.toString(base));
+			inputPage.nextLine();
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			inputPage.nextLine();
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			inputPage.nextLine();
+			while(inputPage.hasNext()){
+				for(int i=0;i<3;i++){
+					str.add(inputPage.nextLine());
+				}
+				inputPage.nextLine();
+				str.add(inputPage.nextLine());
+				str.add(inputPage.nextLine());
+				inputPage.nextLine();
+			}
+			closeConnection();
+			return str;
+		}
+		closeConnection();
+		return str;
+	}
+	
+	/**
+	 * returns all that is required to Build To Mail from given lastUID (exclusive)
+	 * [UID, VALID, FROM, TO, SUBJECT, DATE] 
+	 * all the strings obtained are unprocessed
+	 * @param lastUID
+	 * @param latestUID
+	 * @return
+	 */
+	
+	public ArrayList<String> getAllLaterMailForTo(Long lastUID, Long latestUID){
+		if(lastUID == latestUID){
+			return null;
+		}
+		long finalPageNumber = latestUID/100;
+		long pageNumber = lastUID/100;
+		ArrayList<String> str = new ArrayList<String>();
+		while(pageNumber<=finalPageNumber){
+			getAllMailFromPageForTo(pageNumber, lastUID, str);
+			pageNumber++;
+			lastUID = pageNumber*100;
+		}
+		return str;
+	}
+	
+	private ArrayList<String> getAllMailFromPageForTo(Long pageNumber, Long baseUID, ArrayList<String> str){
+		connectToPage(pageNumber);
+		boolean valid = false;
+		long base = 0;
+		while(inputPage.hasNext()){
+			if((base = inputPage.nextLong())>= baseUID){
+				valid = true;
+				break;
+			}
+			else{
+				for(int i=0;i<6;i++){
+					inputPage.nextLine();
+				}
+			}
+		}
+		
+		if(valid){
+			str.add(Long.toString(base));
+			inputPage.nextLine();
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			inputPage.nextLine();
+			while(inputPage.hasNext()){
+				
+				for(int i=0;i<6;i++){
+					str.add(inputPage.nextLine());
+				}
+				inputPage.nextLine();
+			}
+			closeConnection();
+			return str;
+		}
+		closeConnection();
+		return str;
+	}
+	
+	/**
+	 * returns all that is required to build SubjectMailTree from given lastUID (exclusive)
+	 * [UID, VALID, FROM, SUBJECT, DATE]
+	 * all the strings are unprocessed
+	 * @param lastUID
+	 * @param latestUID
+	 * @return
+	 */
+	
+	public ArrayList<String> getAllLaterMailForSubject(Long lastUID, Long latestUID){
+		if(lastUID == latestUID){
+			return null;
+		}
+		long finalPageNumber = latestUID/100;
+		long pageNumber = lastUID/100;
+		ArrayList<String> str = new ArrayList<String>();
+		while(pageNumber<=finalPageNumber){
+			getAllMailFromPageForSubject(pageNumber, lastUID, str);
+			pageNumber++;
+			lastUID = pageNumber*100;
+		}
+		return str;
+	}
+	
+	private ArrayList<String> getAllMailFromPageForSubject(Long pageNumber, Long baseUID, ArrayList<String> str){
+		connectToPage(pageNumber);
+		boolean valid = false;
+		long base = 0;
+		while(inputPage.hasNext()){
+			if((base = inputPage.nextLong())>= baseUID){
+				valid = true;
+				break;
+			}
+			else{
+				for(int i=0;i<6;i++){
+					inputPage.nextLine();
+				}
+			}
+		}
+		
+		if(valid){
+			str.add(Long.toString(base));
+			inputPage.nextLine();
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			inputPage.nextLine();
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			inputPage.nextLine();
+			while(inputPage.hasNext()){
+				str.add(inputPage.nextLine());
+				str.add(inputPage.nextLine());
+				str.add(inputPage.nextLine());
+				inputPage.nextLine();				
+				str.add(inputPage.nextLine());
+				str.add(inputPage.nextLine());
+				inputPage.nextLine();
+			}
+			closeConnection();
+			return str;
+		}
+		closeConnection();
+		return str;
+	}
+	
+	
+	/**
+	 * Returns all that is required by FromNameSearchTree from  given lastUID (exclusive)
+	 * [UID, VALID, FROM, SUBJECT, DATE]
+	 * All the information is unprocessed
+	 * @param lastUID
+	 * @param latestUID
+	 * @return
+	 */
+	public ArrayList<String> getAllLaterMailForFromName(Long lastUID, Long latestUID){
+		if(lastUID == latestUID){
+			return null;
+		}
+		long finalPageNumber = latestUID/100;
+		long pageNumber = lastUID/100;
+		ArrayList<String> str = new ArrayList<String>();
+		while(pageNumber<=finalPageNumber){
+			getAllMailFromPageForFromName(pageNumber, lastUID, str);
+			pageNumber++;
+			lastUID = pageNumber*100;
+		}
+		return str;
+	}
+	
+	
+	private ArrayList<String> getAllMailFromPageForFromName(Long pageNumber, Long baseUID, ArrayList<String> str){
+		connectToPage(pageNumber);
+		boolean valid = false;
+		long base = 0;
+		while(inputPage.hasNext()){
+			if((base = inputPage.nextLong())>= baseUID){
+				valid = true;
+				break;
+			}
+			else{
+				for(int i=0;i<6;i++){
+					inputPage.nextLine();
+				}
+			}
+		}
+		
+		if(valid){
+			str.add(Long.toString(base));
+			inputPage.nextLine();
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			inputPage.nextLine();
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			inputPage.nextLine();
+			while(inputPage.hasNext()){
+				str.add(inputPage.nextLine());
+				str.add(inputPage.nextLine());
+				str.add(inputPage.nextLine());
+				inputPage.nextLine();				
+				str.add(inputPage.nextLine());
+				str.add(inputPage.nextLine());
+				inputPage.nextLine();
+			}
+			closeConnection();
+			return str;
+		}
+		closeConnection();
+		return str;
+	}
+	
+	/**
+	 * returns all that is required by ToNameSearchTree from given lastUID (exlclusive)
+	 * [UID, VALID, FROM, TO, SUBJECT, DATE]
+	 * all the information is unprocessed
+	 * @param lastUID
+	 * @param latestUID
+	 * @return
+	 */
+	public ArrayList<String> getAllLaterMailForToName(Long lastUID, Long latestUID){
+		if(lastUID == latestUID){
+			return null;
+		}
+		long finalPageNumber = latestUID/100;
+		long pageNumber = lastUID/100;
+		ArrayList<String> str = new ArrayList<String>();
+		while(pageNumber<=finalPageNumber){
+			getAllMailFromPageForToName(pageNumber, lastUID, str);
+			pageNumber++;
+			lastUID = pageNumber*100;
+		}
+		return str;
+	}
+	
+	private ArrayList<String> getAllMailFromPageForToName(Long pageNumber, Long baseUID, ArrayList<String> str){
+		connectToPage(pageNumber);
+		boolean valid = false;
+		long base = 0;
+		while(inputPage.hasNext()){
+			if((base = inputPage.nextLong())>= baseUID){
+				valid = true;
+				break;
+			}
+			else{
+				for(int i=0;i<6;i++){
+					inputPage.nextLine();
+				}
+			}
+		}
+		
+		
+		if(valid){
+			str.add(Long.toString(base));
+			inputPage.nextLine();
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			str.add(inputPage.nextLine());
+			inputPage.nextLine();
+			while(inputPage.hasNext()){
+				str.add(inputPage.nextLine());
+				str.add(inputPage.nextLine());
+				str.add(inputPage.nextLine());
+				str.add(inputPage.nextLine());	
+				str.add(inputPage.nextLine());
+				str.add(inputPage.nextLine());
+				inputPage.nextLine();
+			}
+			closeConnection();
+			return str;
+		}
+		closeConnection();
+		return str;
+	}
+	
+	/**
+	 * Methods Used by GUI
+	 * @param baseUID
+	 * @return
+	 */
+	
+	/**
+	 * returns LinkedList with atleast kmails
+	 * [date, subject, from, validString, UID]
+	 * @param latestUID
+	 * @param factor
+	 * @return
+	 */
+
+	public LinkedList<String> getKmails(Long ceilUID, int num){
+		if(num == 0){
+			return null;
+		}
+		int count = 0, prependPos=0;
+		Long base;
+		LinkedList<String> mails = new LinkedList<String>();
+		long pageNumber = ceilUID/100;
+		
+		while(count<num && pageNumber>=0){
+			connectToPage(pageNumber);
+			while(inputPage.hasNext() && (base = inputPage.nextLong()).compareTo(ceilUID)<=0){
+				mails.add(prependPos, Long.toString(base));
+				inputPage.nextLine();
+				mails.add(prependPos, inputPage.nextLine());
+				mails.add(prependPos, inputPage.nextLine());
+				inputPage.nextLine();
+				mails.add(prependPos, inputPage.nextLine());
+				mails.add(prependPos, inputPage.nextLine());
+				inputPage.nextLine();
+				count++;
+			}
+			closeConnection();
+			ceilUID = pageNumber*100-1;
+			pageNumber--;
+			prependPos = count*5;
+		}
+		
+		return mails;
+		
+	}
+	
+	public void closeConnection(){
+		inputPage.close();
+	}
+	
+	public void writeStateChanges(){
+		try {
+			FileWriter fileWriter = new FileWriter(Include.CURDIR+"/mailDB/lastUID.txt");
+			fileWriter.write(this.latestUID.toString());
+			fileWriter.close();
+			fileWriter = new FileWriter(Include.CURDIR+"/mailDB/lastSearchUID.txt");
+			fileWriter.write(this.latestUID.toString());
+			fileWriter.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+	}
+}
